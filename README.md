@@ -1,5 +1,7 @@
 # identifiability
 
+**English** | [简体中文](README.zh-CN.md)
+
 Four checks for one question: **is this fitted curve — and the numbers derived from it — actually identifiable from the data you have?**
 
 A high R² does not mean the fit is trustworthy. Neither does a small standard error. This package implements the reporting protocol from the paper *Identifiability of the Data-Augmentation Penalty* (ChinaXiv T202609.00792), and applies to any curve fit with a few parameters.

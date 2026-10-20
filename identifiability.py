@@ -1,15 +1,19 @@
 # -*- coding: utf-8 -*-
 """
-identifiability —— 数据增强惩罚的可辨识性工具箱
+identifiability -- four checks for whether a fitted curve and the quantities
+derived from it are identifiable from data.
 
-把论文 5.6 节的报告协议做成可直接调用的代码。四项检查：
+Implements the reporting protocol of section 5.6 of the accompanying paper:
 
-    1. 零分布 (null_r2)      报告的 R² 是否显著高于同 (n, k) 的纯噪声零分布
-    2. 留一法 (loo_spread)   去掉任一点重拟合，参数跨度是否远小于参数本身
-    3. 条件数 (conditioning) 目标区间的局部斜率是否足以支撑反演
-    4. 功效   (required_n)   用实测方差算出的所需种子数，报告值是否达到
+    1. null distribution (null_r2)   is the reported R^2 above what noise gives?
+    2. leave-one-out     (loo_spread) do the parameters survive dropping a point?
+    3. conditioning      (conditioning) is the local slope steep enough to invert?
+    4. power             (required_n) how many seeds does the effect actually need?
 
-用法见文件末尾的 __main__ 示例，或 README。
+See the __main__ block or the README for usage.
+
+All console output is ASCII so the library runs on any terminal, including
+Windows consoles using a legacy code page.
 """
 
 from __future__ import annotations
@@ -25,23 +29,25 @@ __all__ = ["exp_decay", "NullResult", "null_r2", "LOOResult", "loo_spread",
 EPS = 1e-12
 
 
-# ---------------------------------------------------------------- 模型
+# ---------------------------------------------------------------- model
 
 def exp_decay(t, A, tau, C):
-    """三参数指数衰减 P(t) = A*exp(-t/tau) + C，与论文式 (1) 一致。"""
+    """Three-parameter exponential decay P(t) = A*exp(-t/tau) + C (paper eq. 1)."""
     t = np.asarray(t, dtype=float)
     return A * np.exp(-t / np.maximum(tau, EPS)) + C
 
 
 def _fit(model, x, y, p0=None, bounds=None, bounded=False):
-    """拟合。
+    """Least-squares fit.
 
-    默认 bounded=False，即**无界**最小二乘——这与论文 4.x 节拟合衰减律所用
-    的方式一致。这一点很关键：**零分布必须与实测曲线使用同一种拟合**，
-    否则检验无效。有界拟合（A>=0）会把纯噪声的 R² 压得更低，
-    使零分布偏小、检验偏松。
+    Defaults to bounded=False, i.e. *unbounded* least squares, matching the
+    procedure used to fit the decay law in the paper. This matters: the null
+    distribution must use the same fitting procedure as the actual curve, or
+    the test is invalid. A bounded fit (A >= 0) pushes the R^2 of pure noise
+    lower, which shrinks the null and makes the test too permissive.
 
-    置 bounded=True 可启用有界拟合（多起点、A>=0），用于对照。
+    Set bounded=True to enable the bounded variant (multi-start, A >= 0) for
+    comparison.
     """
     x = np.asarray(x, dtype=float); y = np.asarray(y, dtype=float)
     if p0 is None:
@@ -69,7 +75,7 @@ def _fit(model, x, y, p0=None, bounds=None, bounded=False):
 
 
 def _auto_p0(x, y):
-    """自动初值：把 y 的极差当幅度、x 的跨度当时间尺度。"""
+    """Starting values: the y range as amplitude, the x span as the time scale."""
     x = np.asarray(x, float); y = np.asarray(y, float)
     A = float(y.max() - y.min()) or 1.0
     tau = float(x.max() - x.min()) / 2 or 1.0
@@ -84,14 +90,14 @@ def _r2(y, yhat):
     return 1.0 - ss_res / ss_tot if ss_tot > EPS else 0.0
 
 
-# ---------------------------------------------------------------- 检查 1：零分布
+# ---------------------------------------------------------------- check 1: null distribution
 
 @dataclass
 class NullResult:
-    r2: float                 # 实测 R²
-    null_median: float        # 零分布中位数
-    null_q90: float           # 零分布 90 分位
-    p_value: float            # P(纯噪声的 R² >= 实测 R²)
+    r2: float                 # R^2 of the actual fit
+    null_median: float        # median R^2 under the null
+    null_q90: float           # 90th percentile of the null
+    p_value: float            # P(noise R^2 >= observed R^2)
     n: int
     k: int
     iters: int
@@ -101,19 +107,20 @@ class NullResult:
         return self.r2 > self.null_q90
 
     def __str__(self):
-        return (f"零分布  R²={self.r2:.3f}  零分布中位={self.null_median:.3f} "
-                f"90分位={self.null_q90:.3f}  p={self.p_value:.4f}  "
-                f"n={self.n} k={self.k}  -> {'通过' if self.passed else '**不通过**'}")
+        return (f"null    R^2={self.r2:.3f}  null_median={self.null_median:.3f} "
+                f"null_q90={self.null_q90:.3f}  p={self.p_value:.4f}  "
+                f"n={self.n} k={self.k}  -> {'PASS' if self.passed else 'FAIL'}")
 
 
 def null_r2(x, y, model=exp_decay, k=3, iters=2000, seed=0, design_x=None, bounded=False):
     """
-    计算同 (n, k) 的纯噪声零分布。
+    Empirical null distribution of R^2 at the same (n, k).
 
-    因变量取 N(0, 1)，用同一拟合器拟合，记录 R²。这样得到的分布与 1 同等重要——
-    报告的 R² 只有显著高于它，才说明数据中真的存在可拟合的结构。
+    Draws iters independent N(0, 1) series, fits them with the same fitter, and
+    records R^2. This is as important as the fit itself: the reported R^2 only
+    means something if it sits clearly above what noise would produce.
 
-    design_x: 若给出，用它作为零分布的自变量设计（默认沿用实测的 x）。
+    design_x: if given, use this x design for the null instead of the observed x.
     """
     x = np.asarray(x, float); y = np.asarray(y, float)
     xd = np.asarray(design_x, float) if design_x is not None else x
@@ -130,17 +137,17 @@ def null_r2(x, y, model=exp_decay, k=3, iters=2000, seed=0, design_x=None, bound
                       p, n, k, iters)
 
 
-# ---------------------------------------------------------------- 检查 2：留一法
+# ---------------------------------------------------------------- check 2: leave-one-out
 
 @dataclass
 class LOOResult:
-    full: np.ndarray          # 全点拟合的参数
-    loo: np.ndarray           # 每次去掉一个点的参数 (m, k)
+    full: np.ndarray          # parameters from all points
+    loo: np.ndarray           # parameters from each leave-one-out fit, shape (m, k)
     names: list = field(default_factory=lambda: ["A", "tau", "C"])
 
     @property
     def spread(self) -> np.ndarray:
-        """每个参数的相对跨度 = (max-min)/|全点值|。"""
+        """Relative spread per parameter: (max - min) / |full value|."""
         s = []
         for j in range(self.full.shape[0]):
             rng = self.loo[:, j].max() - self.loo[:, j].min()
@@ -149,17 +156,17 @@ class LOOResult:
 
     @property
     def passed(self) -> bool:
-        """任一参数跨度超过 100% 即视为不可靠。"""
+        """A relative spread above 100% on any parameter means it is unreliable."""
         return bool(np.all(self.spread < 1.0))
 
     def __str__(self):
         parts = [f"{nm}: {sp*100:.1f}%" for nm, sp in zip(self.names, self.spread)]
-        return ("留一法  相对跨度  " + "  ".join(parts)
-                + f"  -> {'通过' if self.passed else '**不通过**'}")
+        return ("loo     spread  " + "  ".join(parts)
+                + f"  -> {'PASS' if self.passed else 'FAIL'}")
 
 
 def loo_spread(x, y, model=exp_decay, names=None):
-    """去掉任一点重拟合，看参数跨度。跨度远小于参数本身才说明拟合稳定。"""
+    """Refit once per dropped point. A stable fit barely moves its parameters."""
     x = np.asarray(x, float); y = np.asarray(y, float)
     full = _fit(model, x, y)
     rows = []
@@ -172,13 +179,13 @@ def loo_spread(x, y, model=exp_decay, names=None):
     return r
 
 
-# ---------------------------------------------------------------- 检查 3：条件数
+# ---------------------------------------------------------------- check 3: conditioning
 
 @dataclass
 class CondResult:
-    x0: float                 # 目标点
-    slope: float              # 局部斜率 (dY/dX)
-    rel_err: float            # 反演量的相对误差 = delta_y / (slope * x)
+    x0: float                 # target point
+    slope: float              # local slope dY/dX
+    rel_err: float            # relative error of the inverted quantity
     thresh: float
 
     @property
@@ -186,17 +193,18 @@ class CondResult:
         return self.rel_err < self.thresh
 
     def __str__(self):
-        return (f"条件数  x={self.x0:g}  局部斜率={self.slope:.4g}  "
-                f"相对误差={self.rel_err*100:.1f}%  判据<{self.thresh*100:.0f}%  "
-                f"-> {'通过' if self.passed else '**不通过**'}")
+        return (f"cond    x={self.x0:g}  slope={self.slope:.4g}  "
+                f"rel_err={self.rel_err*100:.1f}%  threshold<{self.thresh*100:.0f}%  "
+                f"-> {'PASS' if self.passed else 'FAIL'}")
 
 
 def conditioning(x, y, x0=None, delta_y=None, thresh=0.15, window=3):
     """
-    误差传播：相对误差 = delta_y / (slope * x)。
+    Error propagation: relative error = delta_y / (slope * x).
 
-    任何需要通过反演校准曲线才能得到的量，都应先检查目标区间的斜率。
-    平坦区间的反演结果不可用，无论输入测得多准。
+    Any quantity that has to be obtained by inverting the curve should first be
+    checked against the local slope. Inversion on a flat segment is unusable no
+    matter how precisely the input was measured.
     """
     x = np.asarray(x, float); y = np.asarray(y, float)
     order = np.argsort(x); x, y = x[order], y[order]
@@ -208,12 +216,15 @@ def conditioning(x, y, x0=None, delta_y=None, thresh=0.15, window=3):
         lo, hi = max(0, i - 1), min(len(x), i + 2)
     sl, *_ = np.polyfit(x[lo:hi], y[lo:hi], 1)
     if delta_y is None:
-        # 无外部误差时用局部残差估计 y 的测量精度，但设一个下限。
+        # No external error given: estimate the measurement precision of y from
+        # the local fit residual, but floor it.
         #
-        # 为什么必须设下限：在曲线的饱和段，局部几个点几乎共线，拟合残差
-        # 趋近于 0。若直接拿残差当精度，相对误差会被算成 0，把最不可靠的
-        # 区间误判为"可靠"。斜率接近 0 时，任何微小的输入误差都会被放大，
-        # 所以精度不可能优于数据整体离散度的一个固定比例（此处取 5%）。
+        # Why the floor is necessary: on a saturated segment the local points are
+        # nearly collinear, so the residual approaches zero. Taking the residual
+        # as the precision then reports a relative error of 0, marking the least
+        # invertible region as reliable. As the slope approaches 0 any input error
+        # is amplified, so the precision cannot be better than a fixed fraction of
+        # the data's overall spread (5% here).
         coef = np.polyfit(x[lo:hi], y[lo:hi], 1)
         fit = np.polyval(coef, x[lo:hi])
         resid = float(np.std(y[lo:hi] - fit))
@@ -224,21 +235,22 @@ def conditioning(x, y, x0=None, delta_y=None, thresh=0.15, window=3):
     return CondResult(float(x0), float(sl), rel, thresh)
 
 
-# ---------------------------------------------------------------- 检查 4：功效
+# ---------------------------------------------------------------- check 4: power
 
 def required_n(effect, sd_control, sd_treat, alpha=0.05, power=0.8, convention="exact"):
     """
-    两独立样本 t 检验所需每组样本量（Cohen's d 的标准定义，用合并标准差）。
+    Per-group sample size for a two-sample t-test (Cohen's d, pooled sd).
 
         d = |effect| / sqrt((sd_control^2 + sd_treat^2) / 2)
         n = 2 * (z_{alpha/2} + z_{power})^2 / d^2
 
-    convention="exact"  用上式（alpha=0.05, power=0.8 时系数为 15.70）
-    convention="paper"  沿用论文 3.3 节的四舍五入写法 n ~= 16 / d^2，
-                        便于与论文表 3 的数值逐项对齐（约大 2%）
+    convention="exact"  the formula above (coefficient 15.70 at the defaults)
+    convention="paper"  the rounded n ~= 16 / d^2 from section 3.3 of the paper,
+                        about 2% larger, for aligning with its tables
 
-    注意：小样本估出的方差本身不可靠（论文 4.4 节实测可差 2 倍以上），
-    该数字应读作量级参考，不是精确预算。
+    Caveat: the variance you pass in is itself estimated from a handful of runs
+    and can be off by a factor of two or more. Read the result as an order of
+    magnitude, not a budget.
     """
     sp = math.sqrt((sd_control ** 2 + sd_treat ** 2) / 2.0)
     if sp <= EPS or effect == 0:
@@ -252,7 +264,7 @@ def required_n(effect, sd_control, sd_treat, alpha=0.05, power=0.8, convention="
 
 
 def power_table(groups: dict, control: str = "none", alpha=0.05, power=0.8):
-    """groups: {算子名: 该组各次运行的准确率列表}，对每个非对照算子算所需 n。"""
+    """groups: {condition: [accuracy of each run]}; required n for every non-control."""
     base = np.asarray(groups[control], float)
     out = {}
     for name, vals in groups.items():
@@ -266,12 +278,12 @@ def power_table(groups: dict, control: str = "none", alpha=0.05, power=0.8):
     return out
 
 
-# ---------------------------------------------------------------- 汇总
+# ---------------------------------------------------------------- summary
 
 def report(x, y, model=exp_decay, k=3, iters=2000, x0=None, thresh=0.15, seed=0):
-    """跑完三项拟合检查并打印清单。效应量检查请单独调用 required_n / power_table。"""
+    """Run the three curve-level checks and print them. Call required_n separately."""
     print("=" * 68)
-    print("可辨识性检查（论文 5.6 节协议）")
+    print("identifiability checks (paper section 5.6 protocol)")
     print("=" * 68)
     r1 = null_r2(x, y, model=model, k=k, iters=iters, seed=seed)
     r2 = loo_spread(x, y, model=model)
@@ -280,39 +292,40 @@ def report(x, y, model=exp_decay, k=3, iters=2000, x0=None, thresh=0.15, seed=0)
         print("  " + str(r))
     ok = r1.passed and r2.passed and r3.passed
     print()
-    print("  总判定：" + ("三项通过，该拟合可作为定量论据"
-                       if ok else "**有检查未通过，该数值不应作为定量论据**"))
+    print("  verdict: " + ("all three passed, the fit may be used quantitatively"
+                           if ok else "at least one check failed, do not use it quantitatively"))
     return r1, r2, r3
 
 
 if __name__ == "__main__":
-    # 用论文表 1 的真实惩罚曲线做演示
+    # The CutMix and MixUp penalty curves from table 1 of the paper.
     t = np.array([1, 2, 3, 5, 8, 13, 20, 32, 50, 80], float)
     cutmix = np.array([11.97, 9.18, 7.14, 9.50, 5.59, 3.17, 2.98, 1.69, 1.25, -1.15])
     mixup = np.array([2.39, 0.50, 0.97, 1.97, 0.92, 1.46, -0.51, -1.01, 0.09, -0.13])
 
-    print("### CutMix 的惩罚曲线（效应显著、形状规整）")
+    print("### CutMix penalty curve (large, well-shaped effect)")
     report(t, cutmix, iters=500)
     print()
-    print("### MixUp 的惩罚曲线（效应测不出）")
+    print("### MixUp penalty curve (effect not measurable)")
     report(t, mixup, iters=500)
 
     print()
     print("=" * 68)
-    print("功效检查：确立 MixUp 的惩罚需要多少种子")
+    print("power: how many seeds would it take to establish the MixUp penalty")
     print("=" * 68)
-    print("  数据取论文表 3 的实测标准差（已按 3.3 节的合并标准差公式重算）。")
+    print("  Standard deviations measured in the paper (pooled per section 3.3).")
     rows = [(1, 2.39, 0.27, 2.77), (2, 0.50, 2.04, 2.21), (3, 0.97, 0.54, 0.79),
             (5, 1.97, 1.06, 1.18), (8, 0.92, 0.21, 1.47)]
-    print(f"  {'预算':>4}{'效应(pt)':>11}{'sd_none':>10}{'sd_mixup':>10}{'精确式':>9}{'论文式':>9}")
+    print(f"  {'budget':>7}{'effect':>9}{'sd_none':>9}{'sd_mixup':>10}{'exact':>8}{'paper':>7}")
     for ep, eff, s1, s2 in rows:
         ne = required_n(eff, s1, s2, convention="exact")
         np_ = required_n(eff, s1, s2, convention="paper")
-        print(f"  {ep:>4}{eff:>11.2f}{s1:>10.2f}{s2:>10.2f}"
-              f"{int(math.ceil(ne)):>9}{int(math.ceil(np_)):>9}")
+        print(f"  {ep:>7}{eff:>9.2f}{s1:>9.2f}{s2:>10.2f}"
+              f"{int(math.ceil(ne)):>8}{int(math.ceil(np_)):>7}")
     print()
-    print("  「精确式」= 2(z_a/2 + z_b)^2/d^2（本工具的默认）；")
-    print("  「论文式」= 论文 3.3 节的 n ~= 16/d^2，约大 2%，论文表 3 用的是这一列。")
+    print("  exact = 2 (z_a/2 + z_b)^2 / d^2, the default")
+    print("  paper = n ~= 16 / d^2 from section 3.3, about 2% larger")
     print()
-    print("  论文 4.4 节的验证：1/2/3 epoch 分别预测 11/290/8 个种子，")
-    print("  补跑至 23 个后，该显著的两点显著、该测不出的一点仍测不出。")
+    print("  Validation in section 4.4: at 1/2/3 epochs the exact formula predicts")
+    print("  11/290/8 seeds; with 23 seeds collected, the two significant cases")
+    print("  stayed significant and the undetectable one stayed undetectable.")
