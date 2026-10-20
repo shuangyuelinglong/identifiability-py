@@ -7,42 +7,63 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-> **A high R² does not mean the fit is trustworthy.**
-
-Four checks for one question: is this fitted curve — and the numbers derived from it — actually identifiable from the data you have?
-
-![The four checks applied to one real curve](docs/four_checks.png)
-
-*One real penalty curve (10 points). The fit looks like a clean decay and R² = 0.92. Check 1 passes: the curve is real. Check 2 fails: one parameter moves by 1017% when a single point is dropped. Check 3 fails at four of ten locations: the curve cannot be inverted there. Check 4 says a 0.9 pt effect against 1.5 pt of noise needs 44 seeds, not 3.*
-
----
-
-## Install
+**You fitted a curve to a handful of points and reported a number derived from it — a half-life, a break-even point, a cost multiplier. This package checks whether your data can actually pin that number down.**
 
 ```bash
 pip install git+https://github.com/shuangyuelinglong/identifiability-py.git
 ```
 
-Requires `git`. Not on PyPI yet — if both work for you, the archive route is more robust:
+```python
+import numpy as np
+import identifiability as I
 
-```bash
-# download the source archive, then
-pip install identifiability-py-main.tar.gz
+x = np.array([1, 2, 3, 5, 8, 13, 20, 32, 50, 80], float)
+y = np.array([11.97, 9.18, 7.14, 9.50, 5.59, 3.17, 2.98, 1.69, 1.25, -1.15])
+
+null, loo, cond = I.report(x, y, k=3)
 ```
 
-Two runtime dependencies: `numpy` and `scipy`. No training, no GPU, no data download. Python 3.9+.
+```
+====================================================================
+identifiability checks (paper section 5.6 protocol)
+====================================================================
+  null    R^2=0.916  null_median=0.118 null_q90=0.456  p=0.0000  n=10 k=3  -> PASS
+  loo     spread  A: 15.1%  tau: 61.2%  C: 1016.9%  -> FAIL
+  cond    x=13  slope=-0.2053  rel_err=23.4%  threshold<15%  -> FAIL
+  verdict: at least one check failed, do not use it quantitatively
+```
+
+**R² was 0.92. Two of the three checks failed anyway.** The curve is real — but one parameter is not pinned down by the data, and the curve cannot be inverted at the point that mattered.
 
 ---
 
-## Why
+## What "identifiable" means here
 
-Suppose you fit a 3-parameter decay law to 4 data points and get R² = 0.99. Is that evidence?
+A parameter is *identifiable from your data* if the data pins it down: a different but equally good fit does not move it far.
 
-- **Maybe not.** Pure noise fitted with 3 parameters reaches R² = 0.43 at the 90th percentile when n = 10, and exceeds 0.5 with 46% probability when n = 4.
-- **Even if the curve is real**, individual parameters can be unconstrained — dropping one point may move a parameter by 1000%.
-- **And any quantity you invert out of the curve** (a break-even point, a cost multiplier) inherits the local slope, which may be almost zero exactly where you need it.
+A derived quantity — anything you compute by inverting the curve — is identifiable if a small error in your measurement does not blow up into a large error in the answer.
 
-Each of these has a cheap check. That is what this package is.
+Both can fail while R² looks excellent. That is the whole problem this package addresses.
+
+---
+
+## Three ways a fit misleads you
+
+**1. The curve is just noise.**
+Fit 3 parameters to 4 points and R² will look impressive whatever the data. Pure noise reaches R² ≈ 0.43 at the 90th percentile with n = 10, and tops 0.5 more than 46% of the time with n = 4.
+→ *Check 1, `null_r2`*
+
+**2. The curve is real, but a parameter is not pinned down.**
+The model fits well, yet several very different parameter sets fit almost equally well. Drop one data point and a parameter moves by a thousand percent.
+→ *Check 2, `loo_spread`*
+
+**3. The curve is fine, but the number you inverted from it is not.**
+You read a value off the curve where it is nearly flat. A 1% error in the measurement becomes a 50% error in the answer.
+→ *Check 3, `conditioning`*
+
+**And one more, about how many runs you need:**
+You report a difference of 0.9 points, measured with 1.5 points of noise, from 3 seeds. The test will almost never fire — not because the effect is absent, but because you never had the power to see it.
+→ *Check 4, `required_n`*
 
 ---
 
@@ -56,6 +77,47 @@ Each of these has a cheap check. That is what this package is.
 | 4 | **Power** | `required_n` | You actually ran as many seeds as the effect needs |
 
 If any check fails, the number should not be used as a quantitative argument.
+
+![The four checks applied to one real curve](docs/four_checks.png)
+
+*The same curve as the example above, one panel per check. (a) The observed R² sits far above the null — the curve is real. (b) But parameter C moves 1017% under leave-one-out. (c) The curve can only be inverted at six of ten locations. (d) A 0.9-point effect against 1.5 points of noise needs 44 seeds per group; a 2.0-point effect needs 2.*
+
+---
+
+## Who this is for
+
+Anyone who fits a parametric curve to a small number of points and then reports a number taken from that curve:
+
+- decay constants, half-lives, saturation levels;
+- thresholds and break-even points read off a calibration curve;
+- cost or speed multipliers obtained by inverting a scaling law;
+- "we measured the effect as X points" from a handful of training runs.
+
+You do not need this if you have hundreds of points per parameter, or if you only ever report that a fit looks good.
+
+---
+
+## Where this comes from
+
+The paper *Identifiability of the Data-Augmentation Penalty* (ChinaXiv T202609.00792) needed to distinguish **"the augmentation penalty is small"** from **"our experiment could not have detected it anyway."** That required the four checks above, applied consistently to a few hundred runs. They turned out to be reusable, so they are packaged here.
+
+The paper's own use of them, with its numbers, is in section 5.6. This repository is the standalone version.
+
+---
+
+## Install
+
+```bash
+pip install git+https://github.com/shuangyuelinglong/identifiability-py.git
+```
+
+Requires `git`. **Not on PyPI yet**, so `pip install identifiability` will fail. If git is unavailable, download the source archive and install that:
+
+```bash
+pip install identifiability-py-main.tar.gz
+```
+
+Two runtime dependencies: `numpy` and `scipy`. No training, no GPU, no data download. Python 3.9+.
 
 ---
 
@@ -85,13 +147,7 @@ n = I.required_n(effect=2.0, sd_control=1.0, sd_treat=1.0)
 print(n)                                      # ~4
 ```
 
-Or run all three curve-level checks at once:
-
-```python
-null, loo, cond = I.report(x, y, k=3, iters=2000)
-```
-
-A runnable end-to-end example is in [`examples/demo.py`](examples/demo.py) — it produces the narrative behind the figure above.
+A runnable end-to-end example is in [`examples/demo.py`](examples/demo.py) — it walks through the curve above and prints the narrative behind the figure.
 
 ---
 
@@ -153,12 +209,10 @@ Returns `float("inf")` for a zero effect — no sample size detects it.
 
 ## What this is not
 
-Scope matters more than features. This package:
-
-- **is not** a goodness-of-fit test. It tells you whether the curve could have arisen from noise, not whether your model is the right one.
-- **is not** a cross-validation library. The leave-one-out check is about parameter stability, not prediction error.
-- **does not** replace reporting your data. Every check needs the actual points and, for check 4, the actual measurements per condition.
-- **cannot** rescue a number that a reviewer should not trust. It is a filter, not a fix.
+- **Not a goodness-of-fit test.** It tells you whether the curve could have arisen from noise, not whether your model is the right one.
+- **Not a cross-validation library.** The leave-one-out check is about parameter stability, not prediction error.
+- **Not a substitute for reporting your data.** Every check needs the actual points and, for check 4, the actual measurements per condition.
+- **Not a fix.** It filters out numbers that cannot be defended. It cannot make a bad number good.
 
 ---
 
