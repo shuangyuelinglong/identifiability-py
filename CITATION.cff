@@ -1,0 +1,30 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper it accompanies."
+title: "identifiability"
+abstract: >-
+  Four checks for whether a fitted curve, and the quantities derived from it,
+  are identifiable from the available data: an empirical null distribution for
+  R-squared, leave-one-out parameter stability, local-slope conditioning for
+  inversion, and the sample size a given effect requires.
+authors:
+  - family-names: "Gong"
+    given-names: "Miaoan"
+    orcid: "https://orcid.org/0009-0003-4142-4969"
+    email: "20240201175@jju.edu.cn"
+    affiliation: "Art College, Jiujiang University, Jiujiang 332005, China"
+version: 1.0.0
+date-released: "2026-10-20"
+license: MIT
+repository-code: "https://github.com/shuangyuelinglong/identifiability-py"
+preferred-citation:
+  type: misc
+  title: >-
+    Identifiability of the Data-Augmentation Penalty: Per-Budget Tests,
+    Ex-Ante Prediction, and Derived Quantities
+  authors:
+    - family-names: "Gong"
+      given-names: "Miaoan"
+      orcid: "https://orcid.org/0009-0003-4142-4969"
+  year: 2026
+  notes: "ChinaXiv T202609.00792"
+  url: "https://chinaxiv.org/abs/T202609.00792"

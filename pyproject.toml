@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "identifiability"
+version = "1.0.0"
+description = "Four checks for whether a fitted curve and its derived quantities are identifiable from data"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "GONG Miaoan", email = "20240201175@jju.edu.cn" }]
+keywords = ["identifiability", "statistical power", "curve fitting", "reproducibility", "machine learning"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = ["numpy>=1.21", "scipy>=1.7"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/shuangyuelinglong/identifiability-py"
+Paper = "https://chinaxiv.org/abs/T202609.00792"
+
+[tool.setuptools]
+py-modules = ["identifiability"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
