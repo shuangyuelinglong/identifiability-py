@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "identifiability"
-version = "1.0.0"
+version = "1.0.1"
 description = "Four checks for whether a fitted curve and its derived quantities are identifiable from data"
 readme = "README.md"
 requires-python = ">=3.9"

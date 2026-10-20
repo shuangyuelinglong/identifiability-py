@@ -3,8 +3,9 @@
 End-to-end demo: run all four checks on a real curve.
 
 The data are the CutMix penalty curve from the paper's main ladder
-(CIFAR-10, 3 seeds per budget point). The curve looks like a clean decay
-and R² is high. The checks tell a more careful story.
+(CIFAR-10, three seeds per budget point). The curve looks like a clean decay
+and R-squared is high. The checks tell a more careful story -- and the last
+one turns out to apply to the curve's shape as much as to its magnitude.
 
 Run:  python examples/demo.py
 """
@@ -29,13 +30,15 @@ def rule(title):
 def main():
     rule("The curve")
     print(f"  {len(X)} points, penalty falls from {Y[0]:+.2f} to {Y[-1]:+.2f}")
-    print("  It looks like a clean exponential decay. It is not quite one:")
-    print("  the penalty rebounds at 5 epochs (7.14 -> 9.50) before falling again.")
+    print("  It looks like a clean exponential decay -- except for one detail:")
+    print("  the sequence dips to +7.14 at 3 epochs and then rises to +9.50")
+    print("  at 5, before falling again. Is that dip-and-rise real structure,")
+    print("  or is it noise? Keep that question in mind; it comes back at the end.")
 
     # ---------------------------------------------------------------- 1
-    rule("1. Null distribution: is R² better than noise?")
+    rule("1. Null distribution: is R-squared better than noise?")
     r = I.null_r2(X, Y, k=3, iters=2000, seed=0)
-    print(f"  R² = {r.r2:.3f}")
+    print(f"  R^2 = {r.r2:.3f}")
     print(f"  null median = {r.null_median:.3f}, 90th pct = {r.null_q90:.3f}")
     print(f"  p = {r.p_value:.4f}")
     print(f"  -> {'PASS' if r.p_value < 0.05 else 'FAIL'}: the curve does contain structure.")
@@ -52,16 +55,18 @@ def main():
 
     # ---------------------------------------------------------------- 3
     rule("3. Conditioning: can the curve be inverted?")
-    for x0, note in ((3.0, "inside the rebound"), (13.0, "mid-decay"), (50.0, "near saturation")):
+    for x0, note in ((3.0, "at the local minimum"), (13.0, "mid-decay"), (50.0, "near saturation")):
         c = I.conditioning(X, Y, x0=x0)
         verdict = "ok" if c.rel_err <= c.thresh else "ABOVE THRESHOLD"
-        print(f"  x0={x0:>5.0f} ({note:<18}) slope={c.slope:+.4f}  "
+        print(f"  x0={x0:>5.0f} ({note:<20}) slope={c.slope:+.4f}  "
               f"rel.err={c.rel_err*100:>6.1f}%  {verdict}")
     print()
-    print("  At x=3 the local slope is positive: the curve rebounds there, so a")
-    print("  local linear slope is meaningless. At x=13 the relative error is")
-    print("  23.4%, above the 15% threshold. Anything obtained by inverting the")
-    print("  curve near x=13 is not a quantitative argument.")
+    print("  At x=3 the local window straddles a minimum of the sequence, so the")
+    print("  fitted slope is positive and carries no meaning -- a linear slope")
+    print("  computed across a turning point is not a slope of anything.")
+    print("  At x=13 the relative error is 23.4%, above the 15% threshold.")
+    print("  Anything obtained by inverting the curve near x=13 is not a")
+    print("  quantitative argument.")
 
     # ---------------------------------------------------------------- 4
     rule("4. Power: how many seeds does an effect of this size need?")
@@ -73,14 +78,33 @@ def main():
     print("  The variance you feed in is itself estimated from a handful of runs,")
     print("  so read these as order of magnitude.")
 
+    # ---------------------------------------------------------------- epilogue
+    rule("Epilogue: the dip that wasn't")
+    print("  Back to the question from the top. That dip-and-rise was measured")
+    print("  with three seeds per point. The paper later re-ran 3 and 5 epochs")
+    print("  with twenty-three seeds each:")
+    print()
+    print("                   3 seeds        23 seeds")
+    print("    penalty @ 3    +7.14          +7.76   [95% CI +6.01, +9.50]")
+    print("    penalty @ 5    +9.50          +7.04   [95% CI +5.41, +8.66]")
+    print("    difference     +2.35          -0.72   (p = 0.54)")
+    print()
+    print("  The point estimate not only loses significance; it changes sign.")
+    print("  The curve is monotone in that interval. Three seeds did not merely")
+    print("  misstate the size of an effect -- they manufactured a feature of")
+    print("  the curve that does not exist.")
+    print()
+    print("  That is the reason check 4 exists, and the reason it applies to")
+    print("  shapes as well as to magnitudes.")
+
     # ---------------------------------------------------------------- summary
     rule("Summary")
     print("  Check 1 passes: the curve is real.")
     print("  Check 2 fails:  one parameter is unconstrained.")
     print("  Check 3 fails:  the curve is not invertible where it matters.")
-    print("  Check 4 says:   small effects need far more seeds than is typical.")
+    print("  Check 4 says:   three seeds per point are not enough for this shape.")
     print()
-    print("  High R², unreliable fit. That is the whole point of the package.")
+    print("  High R-squared, unreliable fit. That is the whole point of the package.")
 
 
 if __name__ == "__main__":
