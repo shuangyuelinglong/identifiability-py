@@ -10,3 +10,4 @@ venv/
 # local bootstrap script (not part of the package)
 create_and_push.ps1
 push.ps1
+set_about.ps1

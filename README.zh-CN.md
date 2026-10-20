@@ -1,16 +1,36 @@
 # identifiability
 
-**简体中文** | [English](README.md)
+[![tests](https://github.com/shuangyuelinglong/identifiability-py/actions/workflows/tests.yml/badge.svg)](https://github.com/shuangyuelinglong/identifiability-py/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![status](https://img.shields.io/badge/status-v1.0.0-brightgreen)](CHANGELOG.md)
 
-四项检查，回答同一个问题：**这条拟合出来的曲线——以及从它派生出的数字——在你手头的数据下，真的可信吗？**
+[English](README.md) | **简体中文**
 
-R² 高不代表拟合可信，标准误小也不代表。本包实现了论文《数据增强惩罚的可辨识性》(ChinaXiv T202609.00792) 中的报告协议，适用于任何参数不多的曲线拟合。
+> **R² 高，不代表拟合可信。**
 
+四项检查，回答同一个问题：这条拟合出来的曲线——以及从它派生出的数字——在你手头的数据下，真的可辨识吗？
+
+![四项检查作用于一条真实曲线](docs/four_checks.png)
+
+*一条真实的惩罚曲线（10 个点）。它看起来像干净的衰减，R² = 0.92。检查 1 通过：曲线是真的。检查 2 不通过：去掉一个点，某个参数移动 1017%。检查 3 在十处中有四处不通过：那里无法反演。检查 4 说，0.9 pt 的效应配 1.5 pt 的噪声需要 44 个种子，不是 3 个。*
+
+---
+
+## 安装
+
+```bash
+pip install git+https://github.com/shuangyuelinglong/identifiability-py.git
 ```
-pip install identifiability
+
+需要本机有 `git`。**尚未发布到 PyPI**，所以 `pip install identifiability` 会失败。如果 git 不可用，可下载源码包再装：
+
+```bash
+# 下载源码包后
+pip install identifiability-py-main.tar.gz
 ```
 
-两个依赖：`numpy` 与 `scipy`。不需要训练、不需要显卡、不需要下载数据。
+两个运行时依赖：`numpy` 与 `scipy`。不需要训练、不需要显卡、不需要下载数据。Python 3.9+。
 
 ---
 
@@ -18,7 +38,7 @@ pip install identifiability
 
 假设你用 3 参数衰减律拟合 4 个数据点，得到 R² = 0.99。这是证据吗？
 
-- **未必。** 纯噪声用 3 参数拟合，在 n = 10 时 R² 的 90 分位就有 0.46；n = 4 时有 46% 的概率超过 0.5。
+- **未必。** 纯噪声用 3 参数拟合，n = 10 时 R² 的 90 分位就有 0.43；n = 4 时有 46% 的概率超过 0.5。
 - **即便曲线是真的**，个别参数也可能完全不受约束——去掉一个点，某个参数可能移动 1000%。
 - **而且任何反演出来的量**（盈亏平衡点、成本倍数）都继承局部斜率，而你需要的那个位置斜率可能接近 0。
 
@@ -71,6 +91,8 @@ print(n)                                      # 约 4
 null, loo, cond = I.report(x, y, k=3, iters=2000)
 ```
 
+可运行的完整示例见 [`examples/demo.py`](examples/demo.py)——它就是上面那张图背后的过程。
+
 ---
 
 ## API
@@ -110,7 +132,7 @@ null, loo, cond = I.report(x, y, k=3, iters=2000)
 
 在 `x0` 处反演曲线时的误差传播：相对误差 = `delta_y / (slope * x0)`。
 
-不给 `delta_y` 时用局部残差估计，**但设有 5% 的离散度下限**。没有这个下限，局部平直的一段会报出零误差——而那恰恰是反演最差的区间。
+不给 `delta_y` 时用局部残差估计，**但设有 5% 的离散度下限**。没有这个下限，局部平直的一段会报出零误差——而那恰恰是反演最差的区间。**这个 bug 是本仓库的单元测试抓到的**，见 [CHANGELOG.md](CHANGELOG.md)。
 
 ### `required_n(effect, sd_control, sd_treat, alpha=0.05, power=0.8, convention="exact")`
 
@@ -126,6 +148,31 @@ null, loo, cond = I.report(x, y, k=3, iters=2000)
 ### `power_table(groups, control="none", alpha=0.05, power=0.8)`
 
 `groups` 把条件名映射到该条件的实测值列表，返回各条件相对 `control` 的效应量与所需 n。
+
+---
+
+## 它不是什么
+
+**边界比功能更重要。** 本包：
+
+- **不是**拟合优度检验。它只回答"这条曲线会不会来自噪声"，不回答"你的模型对不对"。
+- **不是**交叉验证库。留一法检查的是参数稳定性，不是预测误差。
+- **不能**替代报数据。每一项检查都需要真实的点；第 4 项还需要每个条件下的真实重复测量。
+- **救不了**一个本就不该被信任的数字。它是筛子，不是修理工。
+
+---
+
+## 可复现性
+
+全部确定性：测试用固定种子与固定数据。
+
+```bash
+pip install -e ".[test]"
+pytest -q          # 17 个测试，约 2 秒
+python examples/demo.py
+```
+
+CI 在每次推送时于 Ubuntu 与 Windows 上、Python 3.9 / 3.11 / 3.12 六个组合下跑全套测试。顶部的徽章反映最近一次结果。
 
 ---
 
@@ -146,9 +193,9 @@ pip install -e ".[test]"
 pytest -q
 ```
 
-17 个测试，全部确定性（固定种子、固定数据）。
-
 ## 引用
+
+如果你使用了本包，请引用它所配套的论文：
 
 ```bibtex
 @misc{gong2026identifiability,
@@ -159,6 +206,8 @@ pytest -q
 }
 ```
 
+机器可读的记录见 [`CITATION.cff`](CITATION.cff)。
+
 ## 许可
 
-MIT。
+MIT，见 [LICENSE](LICENSE)。

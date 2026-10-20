@@ -1,16 +1,36 @@
 # identifiability
 
+[![tests](https://github.com/shuangyuelinglong/identifiability-py/actions/workflows/tests.yml/badge.svg)](https://github.com/shuangyuelinglong/identifiability-py/actions/workflows/tests.yml)
+[![python](https://img.shields.io/badge/python-3.9%20%7C%203.11%20%7C%203.12-blue)](pyproject.toml)
+[![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![status](https://img.shields.io/badge/status-v1.0.0-brightgreen)](CHANGELOG.md)
+
 **English** | [简体中文](README.zh-CN.md)
 
-Four checks for one question: **is this fitted curve — and the numbers derived from it — actually identifiable from the data you have?**
+> **A high R² does not mean the fit is trustworthy.**
 
-A high R² does not mean the fit is trustworthy. Neither does a small standard error. This package implements the reporting protocol from the paper *Identifiability of the Data-Augmentation Penalty* (ChinaXiv T202609.00792), and applies to any curve fit with a few parameters.
+Four checks for one question: is this fitted curve — and the numbers derived from it — actually identifiable from the data you have?
 
+![The four checks applied to one real curve](docs/four_checks.png)
+
+*One real penalty curve (10 points). The fit looks like a clean decay and R² = 0.92. Check 1 passes: the curve is real. Check 2 fails: one parameter moves by 1017% when a single point is dropped. Check 3 fails at four of ten locations: the curve cannot be inverted there. Check 4 says a 0.9 pt effect against 1.5 pt of noise needs 44 seeds, not 3.*
+
+---
+
+## Install
+
+```bash
+pip install git+https://github.com/shuangyuelinglong/identifiability-py.git
 ```
-pip install identifiability
+
+Requires `git`. Not on PyPI yet — if both work for you, the archive route is more robust:
+
+```bash
+# download the source archive, then
+pip install identifiability-py-main.tar.gz
 ```
 
-Two dependencies: `numpy` and `scipy`. No training, no GPU, no data download.
+Two runtime dependencies: `numpy` and `scipy`. No training, no GPU, no data download. Python 3.9+.
 
 ---
 
@@ -18,9 +38,9 @@ Two dependencies: `numpy` and `scipy`. No training, no GPU, no data download.
 
 Suppose you fit a 3-parameter decay law to 4 data points and get R² = 0.99. Is that evidence?
 
-- **Maybe not.** Pure noise fitted with 3 parameters reaches R² = 0.46 (90th percentile) at n = 10, and R² > 0.5 with 46% probability at n = 4.
+- **Maybe not.** Pure noise fitted with 3 parameters reaches R² = 0.43 at the 90th percentile when n = 10, and exceeds 0.5 with 46% probability when n = 4.
 - **Even if the curve is real**, individual parameters can be unconstrained — dropping one point may move a parameter by 1000%.
-- **And any quantity you invert out of the curve** (a break-even point, a cost multiplier) inherits the local slope, which may be almost zero where you need it.
+- **And any quantity you invert out of the curve** (a break-even point, a cost multiplier) inherits the local slope, which may be almost zero exactly where you need it.
 
 Each of these has a cheap check. That is what this package is.
 
@@ -71,6 +91,8 @@ Or run all three curve-level checks at once:
 null, loo, cond = I.report(x, y, k=3, iters=2000)
 ```
 
+A runnable end-to-end example is in [`examples/demo.py`](examples/demo.py) — it produces the narrative behind the figure above.
+
 ---
 
 ## API
@@ -110,7 +132,7 @@ Refits once per dropped point.
 
 Error propagation for inverting the curve at `x0`: relative error is `delta_y / (slope * x0)`.
 
-When `delta_y` is omitted, the local residual is used **with a floor of 5% of the data's spread**. Without that floor a locally straight, near-flat segment reports zero error — exactly the case where inversion is worst.
+When `delta_y` is omitted, the local residual is used **with a floor of 5% of the data's spread**. Without that floor a locally straight, near-flat segment reports zero error — exactly the case where inversion is worst. This bug was caught by a unit test in this repository; see [CHANGELOG.md](CHANGELOG.md).
 
 ### `required_n(effect, sd_control, sd_treat, alpha=0.05, power=0.8, convention="exact")`
 
@@ -126,6 +148,31 @@ Returns `float("inf")` for a zero effect — no sample size detects it.
 ### `power_table(groups, control="none", alpha=0.05, power=0.8)`
 
 `groups` maps a condition name to a list of measured values. Returns per-condition effect size and required n against `control`.
+
+---
+
+## What this is not
+
+Scope matters more than features. This package:
+
+- **is not** a goodness-of-fit test. It tells you whether the curve could have arisen from noise, not whether your model is the right one.
+- **is not** a cross-validation library. The leave-one-out check is about parameter stability, not prediction error.
+- **does not** replace reporting your data. Every check needs the actual points and, for check 4, the actual measurements per condition.
+- **cannot** rescue a number that a reviewer should not trust. It is a filter, not a fix.
+
+---
+
+## Reproducibility
+
+Everything here is deterministic. All tests use fixed seeds and fixed data:
+
+```bash
+pip install -e ".[test]"
+pytest -q          # 17 tests, ~2 s
+python examples/demo.py
+```
+
+CI runs the suite on Ubuntu and Windows across Python 3.9, 3.11 and 3.12 on every push. The badge at the top reflects the latest run.
 
 ---
 
@@ -146,9 +193,9 @@ pip install -e ".[test]"
 pytest -q
 ```
 
-17 tests, all deterministic (fixed seeds, fixed data).
-
 ## Citation
+
+If you use this package, please cite the paper it accompanies:
 
 ```bibtex
 @misc{gong2026identifiability,
@@ -159,6 +206,8 @@ pytest -q
 }
 ```
 
+A machine-readable record is in [`CITATION.cff`](CITATION.cff).
+
 ## License
 
-MIT.
+MIT — see [LICENSE](LICENSE).
