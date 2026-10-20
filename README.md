@@ -155,8 +155,7 @@ pytest -q
   title  = {Identifiability of the Data-Augmentation Penalty: Per-Budget Tests, Ex-Ante Prediction, and Derived Quantities},
   author = {Gong, Miaoan},
   year   = {2026},
-  note   = {ChinaXiv T202609.00792},
-  url    = {https://chinaxiv.org/abs/T202609.00792}
+  note   = {ChinaXiv T202609.00792, under review}
 }
 ```
 

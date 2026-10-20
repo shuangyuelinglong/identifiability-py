@@ -26,7 +26,6 @@ test = ["pytest>=7"]
 
 [project.urls]
 Homepage = "https://github.com/shuangyuelinglong/identifiability-py"
-Paper = "https://chinaxiv.org/abs/T202609.00792"
 
 [tool.setuptools]
 py-modules = ["identifiability"]
